@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEditor;
 using UnityEngine;
 #if UNITY_EDITOR
 [ExecuteAlways]
@@ -19,6 +20,8 @@ public class PlacerStalker : MonoBehaviour
         if (!Stalkers.Contains(this))
             Stalkers.Add(this);
         gameObject.hideFlags = HideFlags.HideAndDontSave;
+        if (Selection.activeGameObject?.transform.IsChildOf(transform.parent) ?? false)
+            Selection.activeGameObject = transform.parent.gameObject;
         if (Placer == null)
         {
             DestroyImmediate(gameObject);
