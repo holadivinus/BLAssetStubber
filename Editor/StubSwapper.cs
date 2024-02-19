@@ -10,6 +10,9 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.ResourceManagement.ResourceProviders;
 using SLZ.Marrow.Warehouse;
 using UnityEngine.ResourceManagement.ResourceLocations;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using WebSocketSharp;
 
 public class StubSwapper : AssetModificationProcessor
 {
@@ -17,6 +20,47 @@ public class StubSwapper : AssetModificationProcessor
     public static Dictionary<UnityEngine.Object, string> ExternalAssetsReverse = new Dictionary<UnityEngine.Object, string>();
     public static ResourceLocationCollection SLZAssetLocator => s_slzAssetLocator ??= new ResourceLocationCollection();
     private static ResourceLocationCollection s_slzAssetLocator;
+
+    public static Dictionary<string, string> Barcode2MainAsset => s_barcode2MainAsset ??= gatherModSpawnables();
+    private static Dictionary<string, string> s_barcode2MainAsset;
+
+    private static Dictionary<string, string> gatherModSpawnables()
+    {
+        Dictionary<string, string> bar2asset = new Dictionary<string, string>();
+
+        foreach (string palletPath in Directory.EnumerateFiles(OnLoadStubber.ModsPath, "pallet.json", SearchOption.AllDirectories)) 
+        {
+            string palletSerialized = null;
+            try
+            {
+                palletSerialized = File.ReadAllText(palletPath);
+            } catch(Exception ex)
+            {
+                Debug.LogError("Failed to read external mod Pallet: " + Directory.GetParent(palletPath).Name);
+                Debug.LogError(ex);
+                continue;
+            }
+            JObject palletRoot = null;
+            try
+            {
+                palletRoot = (JObject)JsonConvert.DeserializeObject(palletSerialized);
+            } catch(Exception ex)
+            {
+                Debug.LogError("Failed to deserialize external mod Pallet: " + Directory.GetParent(palletPath).Name);
+                Debug.LogError(ex);
+                continue;
+            }
+            Dictionary<string, Type> typeMap = new Dictionary<string, Type>(palletRoot["types"].Select(t => t.Value<JProperty>().Value).Select(t => new KeyValuePair<string, Type>(t["type"].ToString(), Type.GetType(t["fullname"].ToString()))));
+            foreach (JProperty palletObject in palletRoot["objects"].Children())
+            {
+                Type crateType = typeMap[palletObject.Value["isa"]["type"].ToString()];
+                if (crateType != typeof(SpawnableCrate))
+                    continue;
+                bar2asset[palletObject.Value["barcode"].ToString()] = palletObject.Value["mainAsset"].ToString();
+            }
+        }
+        return bar2asset;
+    }
 
     public class ResourceLocationCollection
     {
@@ -99,10 +143,12 @@ public class StubSwapper : AssetModificationProcessor
     
     public static string[] OnWillSaveAssets(string[] paths)
     {
-        if (OnLoadStubber.Compiling)
-            return paths; 
-        Debug.Log("OnWillSaveAssets"); 
-        //PlacerStalker.Kill.Invoke();
+        if (OnLoadStubber.Compiling || !AssetStubGUI.StubsEnabled)
+            return paths;
+
+        EditorUtility.DisplayProgressBar("Swapping in stubs...", "", 0);
+
+        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Prefabs", .25f);
         // Stubbing Prefabs
         foreach (GameObject gameObj in Resources.FindObjectsOfTypeAll<GameObject>())
         {
@@ -129,6 +175,7 @@ public class StubSwapper : AssetModificationProcessor
             instanced.transform.localScale = siz;
         }
 
+        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Materials & Textures", .5f);
         // Material & Tex Stubbing
         Texture curTex = null;
         foreach (Renderer renderer in Resources.FindObjectsOfTypeAll<Renderer>())
@@ -192,7 +239,7 @@ public class StubSwapper : AssetModificationProcessor
             Debug.Log(" - renderer processing fin");
         }
 
-
+        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Meshes", .75f);
         // Stubbing Meshes
         foreach (MeshFilter meshFilter in Resources.FindObjectsOfTypeAll<MeshFilter>())
         {
@@ -206,7 +253,7 @@ public class StubSwapper : AssetModificationProcessor
         }
 
         _justSaved = true;
-        //Debug.Log("Saving (Swapping Refs to Stubs)");
+        EditorUtility.ClearProgressBar();
 
         return paths;
     }
@@ -223,7 +270,16 @@ public class StubSwapper : AssetModificationProcessor
     {
         if (OnLoadStubber.Compiling)
             return;
-        PlacerStalker.GetAsset ??= (key) => GetExternalAsset<GameObject>(key);
+        PlacerStalker.GetAsset ??= (Func<SpawnableCrateReference, GameObject>)((crateRef) =>
+        {
+            if (!Barcode2MainAsset.TryGetValue(crateRef.Barcode.ID, out string mainAsset))
+            {
+                if (crateRef.EditorCrate != null && crateRef.EditorCrate.MainAsset != null && !string.IsNullOrEmpty(crateRef.EditorCrate.MainAsset.AssetGUID))
+                    return GetExternalAsset<GameObject>(crateRef.EditorCrate.MainAsset.AssetGUID);
+                else return null; 
+            }
+            return GetExternalAsset<GameObject>(mainAsset);
+        });
         if (!s_reloadComplete)
         {
             Debug.Log("Reload Complete!");
@@ -253,7 +309,7 @@ public class StubSwapper : AssetModificationProcessor
     {
         if (OnLoadStubber.Compiling) 
             return;
-        Debug.Log("OnPostSave");
+        
 
         AssetWarehouse.OnReady(() =>  
         {
@@ -266,16 +322,23 @@ public class StubSwapper : AssetModificationProcessor
 
                     PlacerStalker newStalk = new GameObject("Preview").AddComponent<PlacerStalker>();
                     newStalk.transform.SetParent(placer.transform, false);
-                    newStalk.gameObject.hideFlags = HideFlags.HideAndDontSave;
+                    newStalk.gameObject.hideFlags = HideFlags.DontSave;
                     newStalk.Placer = placer;
                 }
                 foreach (var item in PlacerStalker.Stalkers)
                 {
-                    item._lastCrate = null;
+                    item._lastBarcode = null;
                 }
             });
         });
-        
+
+
+        if (!AssetStubGUI.StubsEnabled)
+            return;
+
+        EditorUtility.DisplayProgressBar("Swapping out stubs...", "", 0);
+
+        EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Materials & Textures", .25f);
         // Un-Stubbing Materials & Textures
         foreach (Renderer renderer in Resources.FindObjectsOfTypeAll<Renderer>())
         {
@@ -321,7 +384,8 @@ public class StubSwapper : AssetModificationProcessor
                 }
             }
         }
-         
+
+        EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Meshes", .5f);
         // Un-Stubbing Meshes
         foreach (MeshFilter meshFilter in Resources.FindObjectsOfTypeAll<MeshFilter>())
         {
@@ -340,6 +404,7 @@ public class StubSwapper : AssetModificationProcessor
                 meshFilter.sharedMesh = loadedMesh;
         }
 
+        EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Prefabs", .75f);
         // Un-Stubbing Prefabs 
         foreach (GameObject gameObject in Resources.FindObjectsOfTypeAll<GameObject>())
         {
@@ -370,5 +435,6 @@ public class StubSwapper : AssetModificationProcessor
                 instanced.name = "STUB_GAMEOBJECT_PREFAB_" + prefabPath.Substring(5);
             }
         }
+        EditorUtility.ClearProgressBar();
     }
 }

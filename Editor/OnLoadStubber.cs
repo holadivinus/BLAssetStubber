@@ -46,7 +46,6 @@ public class OnLoadStubber
           // example LocalLowPath C:\Users\Holadivinus\AppData\LocalLow\
           //                      C:\Users\Holadivinus\AppData\LocalLow\Stress Level Zero\BONELAB\Mods\Rexmeck.WeaponPack
             assetURL = Path.GetFullPath(assetURL);
-            Debug.Log("FIN: " + assetURL.Replace(WrongModsString, "Stress Level Zero\\BONELAB\\Mods\\"));
             return assetURL.Replace(WrongModsString, "Stress Level Zero\\BONELAB\\Mods\\");
         
         }

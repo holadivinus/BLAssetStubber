@@ -11,17 +11,28 @@ using UnityEngine;
 public class PlacerStalker : MonoBehaviour
 {
     public static List<PlacerStalker> Stalkers = new();
-    public SpawnableCratePlacer Placer;
+    [HideInInspector] public SpawnableCratePlacer Placer;
     Renderer _placerRend;
-    public SpawnableCrate _lastCrate;
-    public static Func<string, GameObject> GetAsset;
+    [HideInInspector] public string _lastBarcode;
+    public static Func<SpawnableCrateReference, GameObject> GetAsset;
+    [SerializeField] bool ExplorablePreview;
+    private void SetChildHide(HideFlags hideFlags)
+    { 
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            transform.GetChild(i).gameObject.hideFlags = hideFlags;
+        }
+    }
+
     private void Update()
     {
         if (!Stalkers.Contains(this))
             Stalkers.Add(this);
-        gameObject.hideFlags = HideFlags.HideAndDontSave;
-        if (Selection.activeGameObject?.transform.IsChildOf(transform.parent) ?? false)
-            Selection.activeGameObject = transform.parent.gameObject;
+        gameObject.hideFlags = HideFlags.DontSave;
+        SetChildHide(ExplorablePreview ? HideFlags.DontSave : HideFlags.HideAndDontSave);
+        if (!ExplorablePreview && (Selection.activeGameObject != gameObject))
+            if (Selection.activeGameObject?.transform.IsChildOf(transform) ?? false)
+                Selection.activeGameObject = transform.parent.gameObject;
         if (Placer == null)
         {
             DestroyImmediate(gameObject);
@@ -30,22 +41,18 @@ public class PlacerStalker : MonoBehaviour
         if (_placerRend == null)
             _placerRend = transform.parent.GetComponent<Renderer>();
         else _placerRend.enabled = transform.childCount == 0;
-
-        if (_lastCrate != Placer.spawnableCrateReference.EditorCrate)
+        if (_lastBarcode != Placer.spawnableCrateReference.Barcode.ID)
         { 
-            _lastCrate = Placer.spawnableCrateReference.EditorCrate;
+            _lastBarcode = Placer.spawnableCrateReference.Barcode.ID;
             for (var i = transform.childCount - 1; i >= 0; i--)
                 DestroyImmediate(transform.GetChild(i).gameObject);
 
-            if (Placer.spawnableCrateReference.EditorCrate != null && Placer.spawnableCrateReference.EditorCrate.MainAsset != null)
+            GameObject newPrefab = GetAsset?.Invoke(Placer.spawnableCrateReference);
+            if (newPrefab != null)
             {
-                GameObject newPrefab = GetAsset?.Invoke(Placer.spawnableCrateReference.EditorCrate.MainAsset.AssetGUID);
-                if (newPrefab != null)
-                {
-                    Transform newT = Instantiate(newPrefab, transform).transform;
-                    newT.localPosition = Vector3.zero;
-                    newT.localRotation = Quaternion.identity;
-                }
+                Transform newT = Instantiate(newPrefab, transform).transform;
+                newT.localPosition = Vector3.zero;
+                newT.localRotation = Quaternion.identity;
             }
         }
     }

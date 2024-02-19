@@ -19,6 +19,8 @@ using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.ResourceLocations;
 using System.Text.RegularExpressions;
 using System.Drawing.Text;
+using UnityEditor.VersionControl;
+using SLZ.Marrow.Warehouse;
 
 public class AssetStubGUI : EditorWindow
 {
@@ -39,17 +41,36 @@ public class AssetStubGUI : EditorWindow
         { WizardMode.Mesh, typeof(Mesh) },
         { WizardMode.Prefab, typeof(GameObject) },
         { WizardMode.Texture, typeof(Texture2D) },
-        { WizardMode.All, typeof(UnityEngine.Object) },
+        { WizardMode.Asset, typeof(UnityEngine.Object) },
     };
 
     private static bool pathConfirmed;
     private static bool failure;
+    public static bool StubsEnabled 
+    {
+        get => EditorPrefs.GetBool("stubs_enabled", false);
+        set
+        {
+            if (StubsEnabled != value)
+            {
+                if (value)
+                {
+                    EditorPrefs.SetBool("stubs_enabled", true);
+                    StubSwapper.OnPostSave();
+                } else
+                {
+                    StubSwapper.OnWillSaveAssets(null);
+                    EditorPrefs.SetBool("stubs_enabled", false);
+                }
+            }
+        }
+    }
     private void OnGUI()
     {
         if (!Started)
         {
             Started = true;
-            SetWizardMode(WizardMode.All);
+            SetWizardMode(WizardMode.Asset);
         }
         if (!pathConfirmed)
             pathConfirmed = Directory.Exists(OnLoadStubber.SLZAAPath);
@@ -96,9 +117,20 @@ public class AssetStubGUI : EditorWindow
         for (int i = 0; i < (int)WizardMode.Max; i++)
         {
             WizardMode mode = (WizardMode)i;
-            if (GUILayout.Button($"{mode}s", CurrentMode == mode ? selectedButtonStyle : GUI.skin.button))
+            if (GUILayout.Button($"{mode}s", (CurrentMode == mode || !StubsEnabled) ? selectedButtonStyle : GUI.skin.button))
                 SetWizardMode(mode);
+            if (!StubsEnabled)
+            {
+                CurrentMode = WizardMode.Spawnable;
+                break;
+            }
         }
+
+        GUILayout.BeginHorizontal();
+        StubsEnabled = GUILayout.Toggle(StubsEnabled, ""); // Checkbox without label
+        GUILayout.Label("Asset Stubbing"); // Your label text on the right
+        GUILayout.EndHorizontal();
+
         GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
 
@@ -113,10 +145,12 @@ public class AssetStubGUI : EditorWindow
         _searchQuery = GUILayout.TextField(_searchQuery, new GUIStyle(GUI.skin.textField) { fixedWidth = position.width/2 } );
         if (GUILayout.Button(AssetDatabase.LoadAssetAtPath<Texture>("Assets/BonelabAssetStubber/MagnifyingGlass.png"),
             new GUIStyle(GUI.skin.button) { fixedWidth = 25 }))
-            SearchAssets();
-        if (GUILayout.Button("(Debug) Reload Stubs"))
+            if (CurrentMode == WizardMode.Spawnable)
+                SearchSpawnables();
+            else SearchAssets();
+        //if (GUILayout.Button("(Debug) Reload Stubs"))
         {
-            StubSwapper.StartReload();
+          //  StubSwapper.StartReload();
         }
         GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
@@ -145,14 +179,16 @@ public class AssetStubGUI : EditorWindow
                 GUILayout.BeginVertical();
                 GUIStyle style = new GUIStyle(GUI.skin.button) { fixedHeight = position.width / (cols+1), };
                 if (GUILayout.Button(":3", style))
-                    CreateStub(PreviewedAssets[idx]);
+                    if (CurrentMode == WizardMode.Spawnable)
+                        CreateSpawnableStub(PreviewedAssets[idx]);
+                    else CreateStub(PreviewedAssets[idx]);
                 Rect preRect = GUILayoutUtility.GetLastRect();
                 Rect rect = GUILayoutUtility.GetLastRect();
                 rect.width *= .8f;
                 rect.height *= .8f;
                 rect.x += preRect.width * .1f;
                 rect.y += preRect.height * .1f;
-                Texture preview = GetPreview(PreviewedAssets[idx]);
+                Texture preview = CurrentMode == WizardMode.Spawnable ? GetSpawnablePreview(PreviewedAssets[idx]) : GetAssetPreview(PreviewedAssets[idx]);
                 if (preview != null)
                     EditorGUI.DrawTextureTransparent(rect, preview);
                 GUILayout.Label(PreviewedAssets[idx].SimpleAssetName(), new GUIStyle(GUI.skin.label) { fixedWidth = position.width / (cols + 1), });
@@ -170,12 +206,16 @@ public class AssetStubGUI : EditorWindow
     const int searchCount = 30;
     public string[] PreviewedAssets = new string[searchCount];
     public Dictionary<string, Texture> Previews = new Dictionary<string, Texture>();
-    public enum WizardMode { All, Prefab, Material, Texture, Mesh, Shader, AudioClip, Max }
-    public WizardMode CurrentMode;
+    public enum WizardMode { Spawnable, Asset, Prefab, Material, Texture, Mesh, Shader, AudioClip, Max }
+    public static WizardMode CurrentMode;
     private void SetWizardMode(WizardMode mode)
     {
         CurrentMode = mode;
         PreviewedAssets = new string[searchCount];
+    }
+    private void SearchSpawnables()
+    {
+        PreviewedAssets = StubSwapper.Barcode2MainAsset.Keys.SortBySimilarity(kvp => kvp.Split('.').Last(), _searchQuery).Take(searchCount).ToArray();
     }
     private void SearchAssets()
     {
@@ -204,6 +244,19 @@ public class AssetStubGUI : EditorWindow
                 break ;
         }
         EditorUtility.ClearProgressBar();
+    }
+    private void CreateSpawnableStub(string barcode)
+    {
+        GameObject spawned = new GameObject("Spawnable Placer");
+        SpawnableCratePlacer placer = spawned.AddComponent<SpawnableCratePlacer>();
+        placer.spawnableCrateReference.Barcode = new Barcode(barcode);
+        GameObject prev = new GameObject("Preview");
+        prev.transform.parent = spawned.transform;
+        prev.transform.localPosition = Vector3.zero;
+        prev.transform.localRotation = Quaternion.identity;
+        prev.transform.localScale = Vector3.one;
+        prev.AddComponent<PlacerStalker>().Placer = placer;
+        PositionInfrontCameraAndSave(spawned);
     }
     private void CreateStub(string assetPath)
     {
@@ -275,7 +328,63 @@ public class AssetStubGUI : EditorWindow
     }
 
     private int height;
-    private Texture GetPreview(string assetPath)
+    private Texture GetSpawnablePreview(string barcode)
+    {
+        if (string.IsNullOrEmpty(barcode)) return null;
+        if (Previews.TryGetValue(barcode, out Texture preview))
+            if (preview != null)
+                return preview;
+        if (!StubSwapper.Barcode2MainAsset.TryGetValue(barcode, out string mainAsset))
+            return null;
+        GameObject previewObj = StubSwapper.GetExternalAsset<GameObject>(mainAsset);
+        
+        if (previewObj == null)
+            return null;
+        previewObj = GameObject.Instantiate(previewObj);
+        previewObj.transform.position += Vector3.up * height++ * 2 + (Vector3.left * height * 10);
+
+        // start recording
+        Camera objCam = new GameObject("PreviewCam").AddComponent<Camera>();
+        objCam.targetTexture = new RenderTexture(100, 100, 16);
+        objCam.transform.position = (Vector3.right * 1.15f) + previewObj.transform.position;
+        objCam.transform.LookAt(previewObj.transform);
+
+        // Figure preview's bounds
+        bool hasBounds = false;
+        Bounds previewBounds = new Bounds();
+        foreach (Renderer renderer in previewObj.GetComponentsInChildren<Renderer>())
+            if (!hasBounds)
+            {
+                hasBounds = true;
+                previewBounds = renderer.bounds;
+            }
+            else previewBounds.Encapsulate(renderer.bounds);
+
+        float CalculateDistance2(Camera camera, Bounds bounds)
+        {
+            float objectSize = Mathf.Max(bounds.extents.x, bounds.extents.y, bounds.extents.z);
+            float cameraView = Mathf.Min(camera.fieldOfView, camera.fieldOfView * camera.aspect);
+            float distance = 1.1f * objectSize / Mathf.Sin(cameraView * Mathf.Deg2Rad / 2f);
+
+            return distance;
+        }
+        CalculateDistance2(objCam, previewBounds);
+
+        for (int i = 0; i < 5; i++)
+            StubSwapper.NextFrame.Enqueue(null);
+        StubSwapper.NextFrame.Enqueue(() =>
+        {
+            //cam.Render();
+            objCam.targetTexture = null;
+
+            DestroyImmediate(objCam.gameObject);
+            DestroyImmediate(previewObj.gameObject);
+        });
+
+        Previews[barcode] = objCam.targetTexture;
+        return objCam.targetTexture;
+    }
+    private Texture GetAssetPreview(string assetPath)
     {
         if (string.IsNullOrEmpty(assetPath)) return null;
         if (Previews.TryGetValue(assetPath, out Texture preview))
@@ -285,7 +394,7 @@ public class AssetStubGUI : EditorWindow
         UnityEngine.Object asset = null;
 
         WizardMode handling = CurrentMode;
-        if (CurrentMode == WizardMode.All) 
+        if (CurrentMode == WizardMode.Asset) 
         {
             asset = StubSwapper.GetExternalAsset<UnityEngine.Object>(assetPath);
             if (asset is GameObject)
@@ -437,7 +546,8 @@ static class Sorting
     public static string SimpleAssetName(this string name)
     {
         string filt = Regex.Replace(name.Split('/').Last().ToLower(), @"\d+|texture|material|shader|prefab|_", "");
-        filt = filt.Substring(0, Math.Min(30, filt.Length));
+        if (AssetStubGUI.CurrentMode != AssetStubGUI.WizardMode.Spawnable)
+            filt = filt.Substring(0, Math.Min(30, filt.Length));
         return filt;
     }
     public static IEnumerable<T> SortBySimilarity<T>(this IEnumerable<T> source, Func<T, string> conv, string target)
