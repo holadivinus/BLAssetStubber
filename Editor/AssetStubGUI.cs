@@ -18,6 +18,7 @@ using System.Reflection;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.ResourceLocations;
 using System.Text.RegularExpressions;
+using System.Drawing.Text;
 
 public class AssetStubGUI : EditorWindow
 {
@@ -181,8 +182,18 @@ public class AssetStubGUI : EditorWindow
         PreviewedAssets = new string[searchCount];
 
         int used = 0;
+        
+        StubSwapper.SLZAssetLocator.ToString();
+        EditorUtility.DisplayProgressBar("Searching... Starting", "", 0);
+        int i = 0;
+        float iMax = StubSwapper.SLZAssetLocator.Locations.Count;
+        IEnumerable<KeyValuePair<object, IList<IResourceLocation>>> assets = StubSwapper.SLZAssetLocator.Locations.Where(l =>
+        {
+            EditorUtility.DisplayProgressBar("Searching... Figuring types", "", (i++)/iMax);
+            return modetypes[CurrentMode].IsAssignableFrom(l.Value.First().ResourceType) && l.Key.ToString().Contains('/');
+        }).Where(s => !s.Key.ToString().EndsWith(".bundle"));
 
-        IEnumerable<KeyValuePair<object, IList<IResourceLocation>>> assets = StubSwapper.SLZAssetLocator.Locations.Where(l => modetypes[CurrentMode].IsAssignableFrom(l.Value.First().ResourceType)).Where(s => !s.Key.ToString().EndsWith(".bundle"));
+        EditorUtility.DisplayProgressBar("Searching... Sorting??", "", UnityEngine.Random.Range(0, 1));
         if (!string.IsNullOrWhiteSpace(_searchQuery))
             assets = assets.SortBySimilarity(s => s.Key.ToString().SimpleAssetName(), _searchQuery);
 
@@ -190,8 +201,9 @@ public class AssetStubGUI : EditorWindow
         {
             PreviewedAssets[used++] = item.Key.ToString();
             if (used == searchCount)
-                return;
+                break ;
         }
+        EditorUtility.ClearProgressBar();
     }
     private void CreateStub(string assetPath)
     {
@@ -422,49 +434,32 @@ public class AssetStubGUI : EditorWindow
 
 static class Sorting
 {
-    public static string SimpleAssetName(this string name) => Regex.Replace(name.Split('/').Last().ToLower(), @"\d+|texture|material|shader|prefab|_", "");
+    public static string SimpleAssetName(this string name)
+    {
+        string filt = Regex.Replace(name.Split('/').Last().ToLower(), @"\d+|texture|material|shader|prefab|_", "");
+        filt = filt.Substring(0, Math.Min(30, filt.Length));
+        return filt;
+    }
     public static IEnumerable<T> SortBySimilarity<T>(this IEnumerable<T> source, Func<T, string> conv, string target)
     {
-        return source.Select(item => new
-        {
-            Item = item,
-            Distance = LevenshteinDistance(conv.Invoke(item), target),
-            StartsWith = conv.Invoke(item).StartsWith(target, StringComparison.OrdinalIgnoreCase),
-            Contains = conv.Invoke(item).Contains(target, StringComparison.OrdinalIgnoreCase)
-        })
-        .OrderBy(x => !x.StartsWith) // Prefer items that start with the target
-        .ThenBy(x => !x.Contains)    // Then prefer items that contain the target
-        .ThenBy(x => x.Distance).Select(a => a.Item);     // Finally, sort by Levenshtein distance
+        return source.Select(item => new { Item = item, Similarity = CalculateMatchingCharacters(conv(item), target) })
+                     .OrderByDescending(x => x.Similarity) // Note: Now ordering by descending similarity
+                     .Select(x => x.Item);
     }
 
-    public static int LevenshteinDistance(string a, string b)
+    private static int CalculateMatchingCharacters(string source, string target)
     {
-        if (string.IsNullOrEmpty(a))
+        int matchingCharacters = 0;
+        int minLength = Math.Min(source.Length, target.Length);
+
+        for (int i = 0; i < minLength; i++)
         {
-            return string.IsNullOrEmpty(b) ? 0 : b.Length;
-        }
-
-        if (string.IsNullOrEmpty(b))
-        {
-            return a.Length;
-        }
-
-        int lengthA = a.Length;
-        int lengthB = b.Length;
-        var distances = new int[lengthA + 1, lengthB + 1];
-
-        for (int i = 0; i <= lengthA; distances[i, 0] = i++) ;
-        for (int j = 0; j <= lengthB; distances[0, j] = j++) ;
-
-        for (int i = 1; i <= lengthA; i++)
-            for (int j = 1; j <= lengthB; j++)
+            if (source[i] == target[i])
             {
-                int cost = b[j - 1] == a[i - 1] ? 0 : 1;
-                distances[i, j] = Math.Min(
-                    Math.Min(distances[i - 1, j] + 1, distances[i, j - 1] + 1),
-                    distances[i - 1, j - 1] + cost);
+                matchingCharacters++;
             }
+        }
 
-        return distances[lengthA, lengthB];
+        return matchingCharacters;
     }
 }

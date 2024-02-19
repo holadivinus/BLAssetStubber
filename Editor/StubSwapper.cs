@@ -15,8 +15,42 @@ public class StubSwapper : AssetModificationProcessor
 {
     public static Dictionary<string, UnityEngine.Object> ExternalAssets = new Dictionary<string, UnityEngine.Object>();
     public static Dictionary<UnityEngine.Object, string> ExternalAssetsReverse = new Dictionary<UnityEngine.Object, string>();
-    public static ResourceLocationMap SLZAssetLocator => s_slzAssetLocator ??= (ResourceLocationMap)Addressables.LoadContentCatalogAsync("Library/com.unity.addressables/aa/Windows\\catalog.json").WaitForCompletion();
-    private static ResourceLocationMap s_slzAssetLocator;
+    public static ResourceLocationCollection SLZAssetLocator => s_slzAssetLocator ??= new ResourceLocationCollection();
+    private static ResourceLocationCollection s_slzAssetLocator;
+
+    public class ResourceLocationCollection
+    {
+        public ResourceLocationCollection()
+        {
+            EditorUtility.DisplayProgressBar("Gathering Assets...", "Loading SLZ Catalog", 0);
+            AssetLocators = new List<ResourceLocationMap>()
+            { (ResourceLocationMap)Addressables.LoadContentCatalogAsync("Library/com.unity.addressables/aa/Windows\\catalog.json").WaitForCompletion()};
+
+            string appdataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            appdataPath = Directory.GetParent(appdataPath).FullName;
+            appdataPath = Path.Combine(appdataPath, "LocalLow\\Stress Level Zero\\BONELAB\\Mods\\");
+
+            var modCatalogs = Directory.EnumerateDirectories(appdataPath).Select(dir => Directory.EnumerateFiles(dir).FirstOrDefault(file => Path.GetFileName(file).StartsWith("catalog_") && Path.GetFileName(file).EndsWith(".json")));
+
+            int i = 0;
+            float iMax = modCatalogs.Count();
+            foreach (string catalogPath in modCatalogs)
+            {
+                EditorUtility.DisplayProgressBar("Gathering Assets...", $"Loading {Directory.GetParent(catalogPath).Name} Catalog", i++/iMax);
+                AssetLocators = AssetLocators.Append((ResourceLocationMap)Addressables.LoadContentCatalogAsync(catalogPath).WaitForCompletion());
+            }
+
+            EditorUtility.DisplayProgressBar("Combining Asset Lists", "", 1);
+            foreach (ResourceLocationMap curLocatorMap in AssetLocators)
+                foreach (KeyValuePair<object, IList<IResourceLocation>> mapping in curLocatorMap.Locations)
+                    if (!Locations.ContainsKey(mapping.Key))
+                        Locations[mapping.Key] = mapping.Value;   
+            
+            EditorUtility.ClearProgressBar();
+        }
+        public IEnumerable<ResourceLocationMap> AssetLocators;
+        public Dictionary<object,  IList<IResourceLocation>> Locations = new();
+    }
 
     public static T GetExternalAsset<T>(string key) where T : UnityEngine.Object
     {
