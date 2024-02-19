@@ -5,6 +5,7 @@ This is a "mod" for the bonelab/Marrow SDK. This has two features, "stubs" and P
 On save, the editor will refresh, detect existing Spawnable Crate Placers, and try to load in a preview for them.
 This works by findng bonelab's "Addressables Catalog" and then loading the prefabs out of it.
 You will need to let the Asset Stubber know where bonelabs is installed, otherwise it won't work.
+Update: It now works with assets from installed sdk mods.
 
 Example Before & After Images:
 ![Before & After image](https://cdn.discordapp.com/attachments/875811073624784967/1208897422626127942/prevew.png?ex=65e4f475&is=65d27f75&hm=865793c2ef0e692c8894b3c135678ea0d285198d8d36c278baa46afcf5b4185c&)
