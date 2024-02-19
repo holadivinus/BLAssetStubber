@@ -15,6 +15,7 @@ public class PlacerStalker : MonoBehaviour
     Renderer _placerRend;
     [HideInInspector] public string _lastBarcode;
     public static Func<SpawnableCrateReference, GameObject> GetAsset;
+    public static Action<SpawnableCratePlacer> EnsurePreview;
     [SerializeField] bool ExplorablePreview;
     private void SetChildHide(HideFlags hideFlags)
     { 
@@ -53,6 +54,12 @@ public class PlacerStalker : MonoBehaviour
                 Transform newT = Instantiate(newPrefab, transform).transform;
                 newT.localPosition = Vector3.zero;
                 newT.localRotation = Quaternion.identity;
+
+                foreach (SpawnableCratePlacer placer in newT.GetComponentsInChildren<SpawnableCratePlacer>())
+                {
+                    if (placer != Placer)
+                        EnsurePreview.Invoke(placer);
+                }
             }
         }
     }

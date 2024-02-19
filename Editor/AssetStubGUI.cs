@@ -185,13 +185,13 @@ public class AssetStubGUI : EditorWindow
                 Rect preRect = GUILayoutUtility.GetLastRect();
                 Rect rect = GUILayoutUtility.GetLastRect();
                 rect.width *= .8f;
-                rect.height *= .8f;
+                rect.height *= .8f; 
                 rect.x += preRect.width * .1f;
                 rect.y += preRect.height * .1f;
                 Texture preview = CurrentMode == WizardMode.Spawnable ? GetSpawnablePreview(PreviewedAssets[idx]) : GetAssetPreview(PreviewedAssets[idx]);
                 if (preview != null)
                     EditorGUI.DrawTextureTransparent(rect, preview);
-                GUILayout.Label(PreviewedAssets[idx].SimpleAssetName(), new GUIStyle(GUI.skin.label) { fixedWidth = position.width / (cols + 1), });
+                GUILayout.Label(CurrentMode == WizardMode.Spawnable ? PreviewedAssets[idx].SimpleAssetName().Split('.').Last() : PreviewedAssets[idx], new GUIStyle(GUI.skin.label) { fixedWidth = position.width / (cols + 1), });
                 GUILayout.EndVertical();
             }
             GUILayout.EndHorizontal();

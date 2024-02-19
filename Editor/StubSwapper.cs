@@ -143,8 +143,14 @@ public class StubSwapper : AssetModificationProcessor
     
     public static string[] OnWillSaveAssets(string[] paths)
     {
-        if (OnLoadStubber.Compiling || !AssetStubGUI.StubsEnabled)
+        if (OnLoadStubber.Compiling)
             return paths;
+
+        if (!AssetStubGUI.StubsEnabled)
+        {
+            _justSaved = true;
+            return paths;
+        }
 
         EditorUtility.DisplayProgressBar("Swapping in stubs...", "", 0);
 
@@ -252,7 +258,7 @@ public class StubSwapper : AssetModificationProcessor
             else meshFilter.sharedMesh = null;
         }
 
-        _justSaved = true;
+       
         EditorUtility.ClearProgressBar();
 
         return paths;
@@ -270,6 +276,7 @@ public class StubSwapper : AssetModificationProcessor
     {
         if (OnLoadStubber.Compiling)
             return;
+        PlacerStalker.EnsurePreview ??= EnsurePlacerPreview;
         PlacerStalker.GetAsset ??= (Func<SpawnableCrateReference, GameObject>)((crateRef) =>
         {
             if (!Barcode2MainAsset.TryGetValue(crateRef.Barcode.ID, out string mainAsset))
@@ -305,30 +312,29 @@ public class StubSwapper : AssetModificationProcessor
             waiter = 5;
         }
     }
+    public static void EnsurePlacerPreview(SpawnableCratePlacer placer)
+    {
+        if (placer == null || string.IsNullOrEmpty(placer.gameObject.scene.name) || placer.GetComponentInChildren<PlacerStalker>() != null)
+            return;
+        
+        PlacerStalker newStalk = new GameObject("Preview").AddComponent<PlacerStalker>();
+        newStalk.transform.SetParent(placer.transform, false);
+        newStalk.gameObject.hideFlags = HideFlags.DontSave;
+        newStalk.Placer = placer;
+    }
     public static void OnPostSave()
     {
         if (OnLoadStubber.Compiling) 
             return;
-        
 
         AssetWarehouse.OnReady(() =>  
         {
             NextFrame.Enqueue(() =>
             {
                 foreach (SpawnableCratePlacer placer in Resources.FindObjectsOfTypeAll<SpawnableCratePlacer>())
-                {
-                    if (placer == null || string.IsNullOrEmpty(placer.gameObject.scene.name) || placer.GetComponentInChildren<PlacerStalker>() != null)
-                        continue;
-
-                    PlacerStalker newStalk = new GameObject("Preview").AddComponent<PlacerStalker>();
-                    newStalk.transform.SetParent(placer.transform, false);
-                    newStalk.gameObject.hideFlags = HideFlags.DontSave;
-                    newStalk.Placer = placer;
-                }
+                    EnsurePlacerPreview(placer);
                 foreach (var item in PlacerStalker.Stalkers)
-                {
                     item._lastBarcode = null;
-                }
             });
         });
 
