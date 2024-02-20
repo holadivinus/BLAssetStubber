@@ -1,6 +1,10 @@
 # Bonelab Asset Stubber
 This is a "mod" for the bonelab/Marrow SDK. This has two features, "stubs" and Placer Previews.
 
+Updates semi frequently so check back here every once in a while. 
+
+Totally up for feature suggestions, just shoot me a dm @holadivinus on discord.
+
 ### Placer Previews:
 On save, the editor will refresh, detect existing Spawnable Crate Placers, and try to load in a preview for them.
 This works by findng bonelab's "Addressables Catalog" and then loading the prefabs out of it.
