@@ -22,6 +22,17 @@ Problem: You need a mod to make these stubs swap to their real counterparts inga
 I was working on making it work without a mod, buuuut I've kindof given up on that.
 I've got a working "destubber" mod for bonelab I just need to release it
 
+### External Mod Integration:
+You can now search through spawnables from your installed mods!
+It'll parse your mods and load up spawnables from barcodes.
+
+Additionally, you can enable "Explorable Preview" on the preview object to analyze how something was done.
+
+Here's a highly compressed gif of me Searching up Burro's Golf Cart mod, Spawning a golf cart into my map,
+and then exploring its contents/how it was made.
+
+![Spawnable Search & Preview Demonstration](https://cdn.discordapp.com/attachments/875811073624784967/1209630950540054599/2024-02-1913-24-46-ezgif.com-optimize.gif?ex=65e79f9c&is=65d52a9c&hm=49cccbc3cbfeb15158ccc4c90b3f72fd4c97f39d3202d1d6f85806a368e8331c&)
+
 ### Installation
 1. Download the latest released .unitypackage
 2. Drag & Drop it into your project
