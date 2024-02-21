@@ -14,7 +14,7 @@ public class PlacerStalker : MonoBehaviour
     [HideInInspector] public SpawnableCratePlacer Placer;
     Renderer _placerRend;
     [HideInInspector] public string _lastBarcode;
-    public static Func<SpawnableCrateReference, GameObject> GetAsset;
+    public static Func<CrateReference, GameObject> GetAsset;
     public static Action<SpawnableCratePlacer> EnsurePreview;
     [SerializeField] bool ExplorablePreview;
     private void SetChildHide(HideFlags hideFlags)

@@ -8,15 +8,14 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
-using UnityEngine.AddressableAssets.ResourceLocators;
 using UnityEngine.ResourceManagement.ResourceLocations;
 
-public class StubSwapper : AssetModificationProcessor
+public partial class StubSwapper : AssetModificationProcessor
 {
     public static Dictionary<string, UnityEngine.Object> ExternalAssets = new Dictionary<string, UnityEngine.Object>();
     public static Dictionary<UnityEngine.Object, string> ExternalAssetsReverse = new Dictionary<UnityEngine.Object, string>();
-    public static ResourceLocationCollection SLZAssetLocator => s_slzAssetLocator ??= new ResourceLocationCollection();
-    private static ResourceLocationCollection s_slzAssetLocator;
+    public static TotalAssetDirectory SLZAssetLocator => s_slzAssetLocator ??= new TotalAssetDirectory();
+    private static TotalAssetDirectory s_slzAssetLocator;
 
     public static Dictionary<string, string> Barcode2MainAsset => s_barcode2MainAsset ??= gatherModSpawnables();
     private static Dictionary<string, string> s_barcode2MainAsset;
@@ -51,46 +50,11 @@ public class StubSwapper : AssetModificationProcessor
             foreach (JProperty palletObject in palletRoot["objects"].Children())
             {
                 Type crateType = typeMap[palletObject.Value["isa"]["type"].ToString()];
-                if (crateType != typeof(SpawnableCrate))
-                    continue;
-                bar2asset[palletObject.Value["barcode"].ToString()] = palletObject.Value["mainAsset"].ToString();
+                if (crateType == typeof(SpawnableCrate) || crateType == typeof(AvatarCrate))
+                    bar2asset[palletObject.Value["barcode"].ToString()] = palletObject.Value["mainAsset"].ToString();
             }
         }
         return bar2asset;
-    }
-
-    public class ResourceLocationCollection
-    {
-        public ResourceLocationCollection()
-        {
-            EditorUtility.DisplayProgressBar("Gathering Assets...", "Loading SLZ Catalog", 0);
-            AssetLocators = new List<ResourceLocationMap>()
-            { (ResourceLocationMap)Addressables.LoadContentCatalogAsync("Library/com.unity.addressables/aa/Windows\\catalog.json").WaitForCompletion()};
-
-            string appdataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            appdataPath = Directory.GetParent(appdataPath).FullName;
-            appdataPath = Path.Combine(appdataPath, "LocalLow\\Stress Level Zero\\BONELAB\\Mods\\");
-
-            var modCatalogs = Directory.EnumerateDirectories(appdataPath).Select(dir => Directory.EnumerateFiles(dir).FirstOrDefault(file => Path.GetFileName(file).StartsWith("catalog_") && Path.GetFileName(file).EndsWith(".json")));
-
-            int i = 0;
-            float iMax = modCatalogs.Count();
-            foreach (string catalogPath in modCatalogs)
-            {
-                EditorUtility.DisplayProgressBar("Gathering Assets...", $"Loading {Directory.GetParent(catalogPath).Name} Catalog", i++/iMax);
-                AssetLocators = AssetLocators.Append((ResourceLocationMap)Addressables.LoadContentCatalogAsync(catalogPath).WaitForCompletion());
-            }
-
-            EditorUtility.DisplayProgressBar("Combining Asset Lists", "", 1);
-            foreach (ResourceLocationMap curLocatorMap in AssetLocators)
-                foreach (KeyValuePair<object, IList<IResourceLocation>> mapping in curLocatorMap.Locations)
-                    if (!Locations.ContainsKey(mapping.Key))
-                        Locations[mapping.Key] = mapping.Value;   
-            
-            EditorUtility.ClearProgressBar();
-        }
-        public IEnumerable<ResourceLocationMap> AssetLocators;
-        public Dictionary<object,  IList<IResourceLocation>> Locations = new();
     }
 
     public static T GetExternalAsset<T>(string key) where T : UnityEngine.Object
@@ -149,9 +113,9 @@ public class StubSwapper : AssetModificationProcessor
             return paths;
         }
 
-        EditorUtility.DisplayProgressBar("Swapping in stubs...", "", 0);
+       EditorUtility.DisplayProgressBar("Swapping in stubs...", "", 0);
 
-        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Prefabs", .25f);
+       EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Prefabs", .25f);
         // Stubbing Prefabs
         foreach (GameObject gameObj in Resources.FindObjectsOfTypeAll<GameObject>())
         {
@@ -178,7 +142,7 @@ public class StubSwapper : AssetModificationProcessor
             instanced.transform.localScale = siz;
         }
 
-        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Materials & Textures", .5f);
+       EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Materials & Textures", .5f);
         // Material & Tex Stubbing
         Texture curTex = null;
         foreach (Renderer renderer in Resources.FindObjectsOfTypeAll<Renderer>())
@@ -242,7 +206,7 @@ public class StubSwapper : AssetModificationProcessor
             Debug.Log(" - renderer processing fin");
         }
 
-        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Meshes", .75f);
+       EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Meshes", .75f);
         // Stubbing Meshes
         foreach (MeshFilter meshFilter in Resources.FindObjectsOfTypeAll<MeshFilter>())
         {
@@ -265,8 +229,9 @@ public class StubSwapper : AssetModificationProcessor
     private static int waiter;
     public static void StartReload()
     {
-        OnWillSaveAssets(null); 
-        s_reloadComplete = false;
+        UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation(options: UnityEditor.Compilation.RequestScriptCompilationOptions.CleanBuildCache);
+        //OnWillSaveAssets(null); 
+        //s_reloadComplete = false;
     }
     public static bool s_reloadComplete;
     public static void UpdateTick()
@@ -274,7 +239,7 @@ public class StubSwapper : AssetModificationProcessor
         if (OnLoadStubber.Compiling)
             return;
         PlacerStalker.EnsurePreview ??= EnsurePlacerPreview;
-        PlacerStalker.GetAsset ??= (Func<SpawnableCrateReference, GameObject>)((crateRef) =>
+        PlacerStalker.GetAsset ??= (Func<CrateReference, GameObject>)((crateRef) =>
         {
             if (!Barcode2MainAsset.TryGetValue(crateRef.Barcode.ID, out string mainAsset))
             {
@@ -339,9 +304,9 @@ public class StubSwapper : AssetModificationProcessor
         if (!AssetStubGUI.StubsEnabled)
             return;
 
-        EditorUtility.DisplayProgressBar("Swapping out stubs...", "", 0);
+       EditorUtility.DisplayProgressBar("Swapping out stubs...", "", 0);
 
-        EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Materials & Textures", .25f);
+       EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Materials & Textures", .25f);
         // Un-Stubbing Materials & Textures
         foreach (Renderer renderer in Resources.FindObjectsOfTypeAll<Renderer>())
         {
@@ -388,7 +353,7 @@ public class StubSwapper : AssetModificationProcessor
             }
         }
 
-        EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Meshes", .5f);
+       EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Meshes", .5f);
         // Un-Stubbing Meshes
         foreach (MeshFilter meshFilter in Resources.FindObjectsOfTypeAll<MeshFilter>())
         {
@@ -407,7 +372,7 @@ public class StubSwapper : AssetModificationProcessor
                 meshFilter.sharedMesh = loadedMesh;
         }
 
-        EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Prefabs", .75f);
+       EditorUtility.DisplayProgressBar("Swapping out stubs...", "Un-Stubbing Prefabs", .75f);
         // Un-Stubbing Prefabs 
         foreach (GameObject gameObject in Resources.FindObjectsOfTypeAll<GameObject>())
         {

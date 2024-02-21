@@ -1,3 +1,4 @@
+using ImageMagick.ImageOptimizers;
 using SLZ.Marrow.Warehouse;
 using System;
 using System.Collections.Generic;
@@ -53,6 +54,18 @@ public class AssetStubGUI : EditorWindow
             }
         }
     }
+    public static string BonelabsFolder
+    {
+        get => EditorPrefs.GetString("bonelabs_folder", "C:\\Program Files (x86)\\Steam\\steamapps\\common\\BONELAB\\");
+        set => EditorPrefs.SetString("bonelabs_folder", value);
+    }
+    public static string ModOverrideFolder
+    {
+        get => EditorPrefs.GetString("mods_folder", "");
+        set => EditorPrefs.SetString("mods_folder", value);
+    }
+    private static bool BonelabFolderValid => Directory.Exists(OnLoadStubber.SLZAAPath);
+    private bool inSettings;
     private void OnGUI()
     {
         if (!Started)
@@ -60,27 +73,53 @@ public class AssetStubGUI : EditorWindow
             Started = true;
             SetWizardMode(WizardMode.Asset);
         }
-        if (!pathConfirmed)
-            pathConfirmed = Directory.Exists(OnLoadStubber.SLZAAPath);
-        if (!pathConfirmed)
+        if (!BonelabFolderValid)
         {
             GUILayout.Label("Confirm/Input your Bonelabs game folder:");
-            EditorPrefs.SetString("bonelabs_folder", GUILayout.TextField(EditorPrefs.GetString("bonelabs_folder", "C:\\Program Files (x86)\\Steam\\steamapps\\common\\BONELAB\\")));
-            if (GUILayout.Button("Confirm"))
-            {
-                if (!Directory.Exists(OnLoadStubber.SLZAAPath))
-                {
-                    failure = true;
-                }
-                else pathConfirmed = true;
-            }
-            if (failure)
-                GUILayout.Label("nuh uh, you put a bad path in");
+            BonelabsFolder = GUILayout.TextField(BonelabsFolder);
+            GUILayout.Label("(will autodetect when correct)");
 
-            if (!pathConfirmed)
+            if (BonelabFolderValid)
+            {
+                StubSwapper.StartReload();
                 return;
+            }
+            else return;
         }
 
+        // Set the button size
+        float buttonWidth = 30;
+        float buttonHeight = 30;
+
+        // Calculate the top right position
+        float xPos = position.width - buttonWidth - 10; // 10 units from the right edge
+        float yPos = 10; // 10 units from the top edge
+        GUIStyle cog = new GUIStyle(GUI.skin.button);
+        if (GUI.Button(new Rect(xPos, yPos, buttonWidth, buttonHeight), AssetDatabase.LoadAssetAtPath<Texture>("Assets/BonelabAssetStubber/gear.png"), cog))
+            inSettings = !inSettings;
+        
+        if (inSettings)
+        {
+            GUILayout.Space(10);
+            GUILayout.BeginHorizontal();
+            GUILayout.BeginVertical();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Bonelabs game folder:");
+            BonelabsFolder = GUILayout.TextField(BonelabsFolder);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Override Mod folder (blank = default):");
+            ModOverrideFolder = GUILayout.TextField(ModOverrideFolder);
+            if (GUILayout.Button("Refresh NOW"))
+                StubSwapper.StartReload();
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+            GUILayout.Space(40);
+            GUILayout.EndHorizontal();
+            return;
+        }
+        
         // Create a GUIStyle that supports rich text
         GUIStyle textStyle = new GUIStyle(GUI.skin.label);
         textStyle.richText = true;
@@ -179,7 +218,7 @@ public class AssetStubGUI : EditorWindow
                 Texture preview = CurrentMode == WizardMode.Spawnable ? GetSpawnablePreview(PreviewedAssets[idx]) : GetAssetPreview(PreviewedAssets[idx]);
                 if (preview != null)
                     EditorGUI.DrawTextureTransparent(rect, preview);
-                GUILayout.Label(CurrentMode == WizardMode.Spawnable ? PreviewedAssets[idx].SimpleAssetName().Split('.').Last() : PreviewedAssets[idx], new GUIStyle(GUI.skin.label) { fixedWidth = position.width / (cols + 1), });
+                GUILayout.Label(CurrentMode == WizardMode.Spawnable ? PreviewedAssets[idx].SimpleAssetName().Split('.').Last() : PreviewedAssets[idx].Split("/").Last(), new GUIStyle(GUI.skin.label) { fixedWidth = position.width / (cols + 1), });
                 GUILayout.EndVertical();
             }
             GUILayout.EndHorizontal();
@@ -216,8 +255,8 @@ public class AssetStubGUI : EditorWindow
         int i = 0;
         float iMax = StubSwapper.SLZAssetLocator.Locations.Count;
         IEnumerable<KeyValuePair<object, IList<IResourceLocation>>> assets = StubSwapper.SLZAssetLocator.Locations.Where(l =>
-        {
-            EditorUtility.DisplayProgressBar("Searching... Figuring types", "", (i++)/iMax);
+        { 
+           //EditorUtility.DisplayProgressBar("Searching... Figuring types", "", (i++)/iMax);
             return modetypes[CurrentMode].IsAssignableFrom(l.Value.First().ResourceType) && l.Key.ToString().Contains('/');
         }).Where(s => !s.Key.ToString().EndsWith(".bundle"));
 
@@ -231,7 +270,7 @@ public class AssetStubGUI : EditorWindow
             if (used == searchCount)
                 break ;
         }
-        EditorUtility.ClearProgressBar();
+        EditorUtility.ClearProgressBar(); 
     }
     private void CreateSpawnableStub(string barcode)
     {
@@ -282,10 +321,7 @@ public class AssetStubGUI : EditorWindow
     public static void SelectStubMaterial(MenuCommand command)
     {
         if (StubSwapper.ExternalAssetsReverse.TryGetValue(command.context, out string path))
-        {
             Selection.activeObject = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(AssetDatabase.GUIDToAssetPath(AssetDatabase.FindAssets("STUB_" + path).FirstOrDefault()));
-            Debug.Log(path);
-        }
     }
 
     private void PositionInfrontCameraAndSave(GameObject gobj)
