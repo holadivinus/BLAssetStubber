@@ -112,8 +112,8 @@ public partial class StubSwapper : AssetModificationProcessor
             _justSaved = true;
             return paths;
         }
-
-       EditorUtility.DisplayProgressBar("Swapping in stubs...", "", 0);
+        _justSaved = true;
+        EditorUtility.DisplayProgressBar("Swapping in stubs...", "", 0);
 
        EditorUtility.DisplayProgressBar("Swapping in stubs...", "Swapping out Prefabs", .25f);
         // Stubbing Prefabs

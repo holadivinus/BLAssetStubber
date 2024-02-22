@@ -65,6 +65,11 @@ public class AssetStubGUI : EditorWindow
         set => EditorPrefs.SetString("mods_folder", value);
     }
     private static bool BonelabFolderValid => Directory.Exists(OnLoadStubber.SLZAAPath);
+    public static bool OculasMode
+    {
+        get => EditorPrefs.GetBool("oculas_mode", false);
+        set => EditorPrefs.SetBool("oculas_mode", value);
+    }
     private bool inSettings;
     private void OnGUI()
     {
@@ -78,6 +83,8 @@ public class AssetStubGUI : EditorWindow
             GUILayout.Label("Confirm/Input your Bonelabs game folder:");
             BonelabsFolder = GUILayout.TextField(BonelabsFolder);
             GUILayout.Label("(will autodetect when correct)");
+            OculasMode = GUILayout.Toggle(OculasMode, "Oculas Store Mode");
+            
 
             if (BonelabFolderValid)
             {
@@ -114,6 +121,7 @@ public class AssetStubGUI : EditorWindow
             if (GUILayout.Button("Refresh NOW"))
                 StubSwapper.StartReload();
             GUILayout.EndHorizontal();
+            OculasMode = GUILayout.Toggle(OculasMode, "Oculas Store Mode");
             GUILayout.EndVertical();
             GUILayout.Space(40);
             GUILayout.EndHorizontal();

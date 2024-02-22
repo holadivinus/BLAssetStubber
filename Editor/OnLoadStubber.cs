@@ -10,7 +10,7 @@ using UnityEngine.ResourceManagement.ResourceLocations;
 [InitializeOnLoad] // Ensure the constructor is called when the scripts reload in the Editor.
 public class OnLoadStubber
 {
-    public static string SLZAAPath => Path.Combine(AssetStubGUI.BonelabsFolder, "BONELAB_Steam_Windows64_Data\\StreamingAssets\\aa");
+    public static string SLZAAPath => Path.Combine(AssetStubGUI.BonelabsFolder, $"{(AssetStubGUI.OculasMode ? "BONELAB_Oculus_Windows64_Data" : "BONELAB_Steam_Windows64_Data")}\\StreamingAssets\\aa");
 
     public static string LocalLowPath => s_localLowPath ??= Path.GetFullPath(Path.Combine(Directory.GetParent(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)).FullName, "LocalLow\\"));
     private static string s_localLowPath;
